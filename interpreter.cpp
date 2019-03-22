@@ -29,7 +29,7 @@ bool Interpreter::evaluateCell(spreadsheetMap::iterator& it) {
 	std::stack<int> values;
 	std::stack<char> operators;
 
-	for (int i = 0; i < it->second.length(); i++) {
+	for (unsigned int i = 0; i < it->second.length(); i++) {
 
 		if (it->second[i] == ' ' || it->second[i] == '=')
 			continue;
@@ -137,10 +137,9 @@ std::pair<Interpreter::STATE, spreadsheetMap::iterator> Interpreter::checkState(
 			}
 		}
 	}
-	else {
-		state = EMPTY;
-		return make_pair(state, itr);
-	}
+
+	state = EMPTY;
+	return make_pair(state, itr);
 }
 
 void Interpreter::calculate(std::stack<int>& values, std::stack<char>& operators) const {
@@ -172,12 +171,15 @@ int Interpreter::arithmetic(int operand1, int operand2, char oper) const {
 
 		case '/': 
 			return operand1 / operand2;
+
+		default:
+			return 0;
 	}
 }
 
 bool Interpreter::isNumber(const std::string& s) const {
 
-	for (int i = 0; i < s.length(); i++) {
+	for (unsigned int i = 0; i < s.length(); i++) {
 
 		if (!isdigit(s[i]))
 			return false;
