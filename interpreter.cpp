@@ -1,6 +1,6 @@
 #include "interpreter.h"
 
-Interpreter::Interpreter(Spreadsheet* spreadSheetObj) : spreadSheet(spreadSheetObj), finalCellMap(spreadSheet->getMap()), state(NUMBER) {
+Interpreter::Interpreter(Spreadsheet* spreadSheetObj) : spreadSheet(spreadSheetObj), finalCellMap(spreadSheet->getMap()), visitedCells(), state(NUMBER) {
 
 }
 
@@ -8,26 +8,19 @@ Interpreter::~Interpreter() {
 	delete spreadSheet;
 }
 
-spreadsheetMap& Interpreter::evaluateSpreadsheet() {
+const spreadsheetMap& Interpreter::evaluateSpreadsheet() {
 
-	for (auto it = finalCellMap.begin(); it != finalCellMap.end(); it++) {
-		
-		if (!isNumber(it->second)) {
-
-			if (it->second == "#ERROR" || it->second == "#NAN")
-				continue;
-
+	for (auto it = finalCellMap.begin(); it != finalCellMap.end(); it++) 
+		if (it->second[0] == '=')
 			evaluateCell(it);
-		}
-	}
 
 	return finalCellMap;
 }
 
 bool Interpreter::evaluateCell(spreadsheetMap::iterator& it) {
 
-	std::stack<int> values;
 	std::stack<char> operators;
+	std::stack<std::string> operands;
 
 	for (unsigned int i = 0; i < it->second.length(); i++) {
 
@@ -35,28 +28,17 @@ bool Interpreter::evaluateCell(spreadsheetMap::iterator& it) {
 			continue;
 		else if (it->second[i] == '(')
 			operators.push(it->second[i]);
-		else if (isdigit(it->second[i])) {
-			int number = 0;
-
-			while (i < it->second.length() && isdigit(it->second[i])) {
-				number = (number * 10) + (it->second[i] - '0');
-				i++;
-			}
-
-			i--;
-			values.push(number);
-		}
 		else if (it->second[i] == '+' || it->second[i] == '-' || it->second[i] == '*' || it->second[i] == '/') {
 
 			while (!operators.empty() && pemdas(operators.top()) >= pemdas(it->second[i]))
-				calculate(values, operators);
+				calculate(operands, operators);
 
 			operators.push(it->second[i]);
 		}
 		else if (it->second[i] == ')') {
 
 			while (!operators.empty() && operators.top() != '(')
-				calculate(values, operators);
+				calculate(operands, operators);
 
 			operators.pop();
 		}
@@ -70,17 +52,20 @@ bool Interpreter::evaluateCell(spreadsheetMap::iterator& it) {
 
 			i--;
 
-			std::pair<STATE, spreadsheetMap::iterator> cellState = checkState(cell);
+			if(isNumber(cell))
+				operands.push(cell);
+			else {
+				std::pair<STATE, spreadsheetMap::iterator> cellState = checkState(cell);
 
-			switch (cellState.first) {
+				switch (cellState.first) {
 
 				case NUMBER:
-					values.push(stoi(cellState.second->second));
+					operands.push(cellState.second->second);
 					break;
 
 				case EXPRESSION:
 					if (evaluateCell(cellState.second))
-						values.push(stoi(cellState.second->second));
+						operands.push(cellState.second->second);
 					else if (state == EMPTY) {
 						it->second = "#NAN";
 						return false;
@@ -100,39 +85,49 @@ bool Interpreter::evaluateCell(spreadsheetMap::iterator& it) {
 					it->second = "#ERROR";
 					state = ERROR;
 					return false;
+
+				case STRING:
+					operands.push(cellState.second->second);
+					break;
+				}
 			}
 		}
 	}
 
 	while (!operators.empty())
-		calculate(values, operators);
+		calculate(operands, operators);
 
-	it->second = std::to_string(values.top());
+	it->second = operands.top();
 	return true;
 }
 
-std::pair<Interpreter::STATE, spreadsheetMap::iterator> Interpreter::checkState(std::string& cellString) {
-
-	static std::set<std::string> cells;
+const std::pair<Interpreter::STATE, spreadsheetMap::iterator> Interpreter::checkState(std::string& cellString) {
 
 	auto itr = finalCellMap.find(std::make_pair(cellString[1] - '0', cellString[0]));
-
+	
 	if (itr != finalCellMap.end() && !itr->second.empty()) {
 
-		if (!cells.insert(cellString).second) {
+		if (!visitedCells.insert(cellString).second) {
 			state = ERROR;
 			return make_pair(state, itr);
 		}
 		else {
-
+			
 			if (isNumber(itr->second)) {
 				state = NUMBER;
-				cells.erase(cellString);
+				visitedCells.erase(cellString);
 				return make_pair(state, itr);
 			}
-
-			if (itr->second[0] == '=') {
+			else if (itr->second[0] == '=') {
 				state = EXPRESSION;
+				return make_pair(state, itr);
+			}
+			else if (itr->second[0] == '#') {
+				state = ERROR;
+				return make_pair(state, itr);
+			}
+			else {
+				state = STRING;
 				return make_pair(state, itr);
 			}
 		}
@@ -142,38 +137,47 @@ std::pair<Interpreter::STATE, spreadsheetMap::iterator> Interpreter::checkState(
 	return make_pair(state, itr);
 }
 
-void Interpreter::calculate(std::stack<int>& values, std::stack<char>& operators) const {
+void Interpreter::calculate(std::stack<std::string>& operands, std::stack<char>& operators) const {
 
-	int val2 = values.top();
-	values.pop();
+	std::string operand2 = operands.top();
+	operands.pop();
 
-	int val1 = values.top();
-	values.pop();
-
+	std::string operand1 = operands.top();
+	operands.pop();
+	
 	char op = operators.top();
 	operators.pop();
 
-	values.push(arithmetic(val1, val2, op));
-}
+	if (isNumber(operand1) && isNumber(operand2))
+	{
+		switch (op) {
 
-int Interpreter::arithmetic(int operand1, int operand2, char oper) const {
+		case '+':
+			operands.push(std::to_string(stoi(operand1) + stoi(operand2)));
+			break;
 
-	switch (oper) {
+		case '-':
+			operands.push(std::to_string(stoi(operand1) - stoi(operand2)));
+			break;
 
-		case '+': 
-			return operand1 + operand2;
+		case '*':
+			operands.push(std::to_string(stoi(operand1) * stoi(operand2)));
+			break;
 
-		case '-': 
-			return operand1 - operand2;
-
-		case '*': 
-			return operand1 * operand2;
-
-		case '/': 
-			return operand1 / operand2;
+		case '/':
+			operands.push(std::to_string(stoi(operand1) / stoi(operand2)));
+			break;
 
 		default:
-			return 0;
+			operands.push("#ERROR");
+			break;
+		}
+	}
+	else {
+		if (op == '+')
+			operands.push(operand1 + operand2);
+		else
+			operands.push("#ERROR");
 	}
 }
 

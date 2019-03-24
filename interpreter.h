@@ -10,18 +10,18 @@ class Interpreter {
 private:
 	Spreadsheet *spreadSheet;
 	spreadsheetMap finalCellMap;
+	std::set<std::string> visitedCells;
 	enum STATE { NUMBER, STRING, EXPRESSION, EMPTY, ERROR } state;
-
+	
 public:
 	Interpreter(Spreadsheet* spreadSheetObj); 
 	~Interpreter();
 
-	spreadsheetMap& evaluateSpreadsheet();
+	const spreadsheetMap& evaluateSpreadsheet();
 	bool evaluateCell(spreadsheetMap::iterator& it);
-	std::pair<STATE, spreadsheetMap::iterator> checkState(std::string& cellString);
+	const std::pair<STATE, spreadsheetMap::iterator> checkState(std::string& cellString);
 
-	void calculate(std::stack<int>& values, std::stack<char>& operators) const;
-	int arithmetic(int a, int b, char op) const;
+	void calculate(std::stack<std::string>& values, std::stack<char>& operators) const;
 	bool isNumber(const std::string& s) const;
 	int pemdas(char op) const;
 	void displaySpreadsheet();
